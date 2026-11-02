@@ -16,6 +16,7 @@ import { SongDetail } from './components/SongDetail';
 import { SetlistManager } from './components/SetlistManager';
 import { StageMode } from './components/StageMode';
 import { MegaSyncModal } from './components/MegaSyncModal';
+import { ImportSongModal } from './components/ImportSongModal';
 import { ChordProHelpModal } from './components/ChordProHelpModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 
@@ -36,13 +37,14 @@ function AppContent() {
   // Modals
   const [isMegaSyncOpen, setIsMegaSyncOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
-  // Live Stage Mode State
+  // Live Stage Mode State - default to Alto Sax (Eb)
   const [isStageModeActive, setIsStageModeActive] = useState<boolean>(false);
   const [stageActiveSong, setStageActiveSong] = useState<Song | null>(null);
   const [stageActiveSetlist, setStageActiveSetlist] = useState<Setlist | null>(null);
   const [stageInitialSemitones, setStageInitialSemitones] = useState<number>(0);
-  const [stageInitialInstrument, setStageInitialInstrument] = useState<InstrumentType>('concert');
+  const [stageInitialInstrument, setStageInitialInstrument] = useState<InstrumentType>('alto_sax');
 
   // Load from IndexedDB
   const refreshData = async () => {
@@ -107,7 +109,7 @@ function AppContent() {
   const handleEnterStageModeForSingleSong = (
     song: Song,
     semitones: number = 0,
-    instrument: InstrumentType = 'concert'
+    instrument: InstrumentType = 'alto_sax'
   ) => {
     setStageActiveSong(song);
     setStageActiveSetlist(null);
@@ -126,7 +128,7 @@ function AppContent() {
     setStageActiveSong(initialSong);
     setStageActiveSetlist(setlist);
     setStageInitialSemitones(0);
-    setStageInitialInstrument('concert');
+    setStageInitialInstrument('alto_sax');
     setIsStageModeActive(true);
   };
 
@@ -181,7 +183,7 @@ function AppContent() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {selectedSong ? (
-          /* Song Sheet & Editor View */
+          /* Song Sheet & Editor View (Side-by-side with notes and Alto Sax solos) */
           <SongDetail
             song={selectedSong}
             onSaveSong={handleSaveSong}
@@ -198,6 +200,7 @@ function AppContent() {
             onSelectSong={(id) => setSelectedSongId(id)}
             onEnterStageMode={handleEnterStageModeForSingleSong}
             onAddNewSong={handleAddNewSong}
+            onOpenImportModal={() => setIsImportModalOpen(true)}
           />
         ) : (
           /* Setlists & Playlists Manager */
@@ -213,6 +216,12 @@ function AppContent() {
       </main>
 
       {/* Modals & Floating Indicators */}
+      <ImportSongModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSong={handleAddNewSong}
+      />
+
       <MegaSyncModal
         isOpen={isMegaSyncOpen}
         onClose={() => setIsMegaSyncOpen(false)}

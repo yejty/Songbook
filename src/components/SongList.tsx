@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   FolderOpen,
   Volume2,
+  FileUp,
 } from 'lucide-react';
 
 interface SongListProps {
@@ -22,6 +23,7 @@ interface SongListProps {
   onSelectSong: (songId: string) => void;
   onEnterStageMode: (song: Song, semitones: number, instrument: InstrumentType) => void;
   onAddNewSong: (newSong: Song) => void;
+  onOpenImportModal: () => void;
 }
 
 export const SongList: React.FC<SongListProps> = ({
@@ -31,6 +33,7 @@ export const SongList: React.FC<SongListProps> = ({
   onSelectSong,
   onEnterStageMode,
   onAddNewSong,
+  onOpenImportModal,
 }) => {
   const { lang, t } = useI18n();
   const [selectedTag, setSelectedTag] = useState<string>('all');
@@ -82,16 +85,16 @@ export const SongList: React.FC<SongListProps> = ({
       currentKey: newKey,
       tempo: 120,
       timeSignature: '4/4',
-      tags: ['Sax Solo'],
+      tags: ['Alt Saxofón'],
       chordProText: initialChordPro,
       performanceNotes: [],
       saxSolos: [
         {
           id: `sax-${Date.now()}`,
-          title: lang === 'sk' ? 'Úvodné sólo / vyhrávka' : 'Intro Solo Riff',
+          title: lang === 'sk' ? 'Alt Saxofón (E♭) vyhrávka' : 'Alto Sax (E♭) Riff',
           concertKey: newKey,
           notesContent: `${newKey}5 - E5 - G5 | A5 - - -`,
-          tips: lang === 'sk' ? 'Hrať s pekným tónom' : 'Warm tone and dynamic phrasing',
+          tips: lang === 'sk' ? 'Altový saxofón transponovaný o +9 poltónov' : 'Alto sax transposed +9 semitones',
         },
       ],
       audioRecords: [],
@@ -132,7 +135,7 @@ export const SongList: React.FC<SongListProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Favorites Toggle */}
             <button
               onClick={() => setOnlyFavorites(!onlyFavorites)}
@@ -146,12 +149,22 @@ export const SongList: React.FC<SongListProps> = ({
               <span>{t.favorites}</span>
             </button>
 
+            {/* IMPORT SONG BUTTON */}
+            <button
+              onClick={onOpenImportModal}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer"
+              title={lang === 'sk' ? 'Importovať text a automaticky konvertovať do ChordPro' : 'Import text and auto-convert to ChordPro'}
+            >
+              <FileUp className="w-4 h-4" />
+              <span>{lang === 'sk' ? 'Importovať skladbu' : 'Import Song'}</span>
+            </button>
+
             {/* Add New Song Button */}
             <button
               onClick={() => setShowNewSongModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs border border-slate-700 transition active:scale-95 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 text-amber-400" />
               <span>{t.newSong}</span>
             </button>
           </div>
@@ -191,16 +204,24 @@ export const SongList: React.FC<SongListProps> = ({
         <div className="p-12 text-center rounded-2xl bg-slate-900/50 border border-dashed border-slate-800 text-slate-400 text-sm space-y-3">
           <FolderOpen className="w-10 h-10 mx-auto text-slate-600" />
           <p>{t.emptySongs}</p>
-          <button
-            onClick={() => {
-              onSearchChange('');
-              setSelectedTag('all');
-              setOnlyFavorites(false);
-            }}
-            className="text-xs text-amber-400 underline font-semibold cursor-pointer"
-          >
-            {lang === 'sk' ? 'Zrušiť filtre a zobraziť všetky' : 'Reset filters and show all'}
-          </button>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                onSearchChange('');
+                setSelectedTag('all');
+                setOnlyFavorites(false);
+              }}
+              className="text-xs text-amber-400 underline font-semibold cursor-pointer"
+            >
+              {lang === 'sk' ? 'Zrušiť filtre a zobraziť všetky' : 'Reset filters and show all'}
+            </button>
+            <button
+              onClick={onOpenImportModal}
+              className="text-xs px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold cursor-pointer"
+            >
+              {lang === 'sk' ? 'Importovať novú skladbu' : 'Import New Song'}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -244,7 +265,7 @@ export const SongList: React.FC<SongListProps> = ({
 
                     {hasSax && (
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 font-medium">
-                        🎷 Sax Solo
+                        🎷 Alt Sax
                       </span>
                     )}
 
@@ -269,12 +290,12 @@ export const SongList: React.FC<SongListProps> = ({
                     onClick={() => onSelectSong(song.id)}
                     className="text-xs text-slate-300 hover:text-white font-semibold flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{lang === 'sk' ? 'Otvoriť noty a akordy' : 'Open Sheet & Chords'}</span>
+                    <span>{lang === 'sk' ? 'Otvoriť noty a poznámky' : 'Open Sheet & Notes'}</span>
                     <span>→</span>
                   </button>
 
                   <button
-                    onClick={() => onEnterStageMode(song, 0, 'concert')}
+                    onClick={() => onEnterStageMode(song, 0, 'alto_sax')}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-bold transition active:scale-95 cursor-pointer shadow"
                     title={lang === 'sk' ? 'Spustiť priamo na pódium' : 'Launch stage view'}
                   >

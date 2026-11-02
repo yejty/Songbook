@@ -105,8 +105,18 @@ export const SaxSoloSection: React.FC<SaxSoloSectionProps> = ({
           </div>
         </div>
 
-        {/* Instrument Switcher */}
+        {/* Instrument Switcher - Alto Sax Focused */}
         <div className="flex items-center gap-1.5 p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs">
+          <button
+            onClick={() => setSelectedInstrument('alto_sax')}
+            className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+              selectedInstrument === 'alto_sax'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            🎷 Alt Saxofón (E♭)
+          </button>
           <button
             onClick={() => setSelectedInstrument('concert')}
             className={`px-3 py-1.5 rounded-lg font-medium transition cursor-pointer ${
@@ -115,27 +125,7 @@ export const SaxSoloSection: React.FC<SaxSoloSectionProps> = ({
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Concert (C)
-          </button>
-          <button
-            onClick={() => setSelectedInstrument('tenor_sax')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer ${
-              selectedInstrument === 'tenor_sax'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Tenor / Soprán (B♭)
-          </button>
-          <button
-            onClick={() => setSelectedInstrument('alto_sax')}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition cursor-pointer ${
-              selectedInstrument === 'alto_sax'
-                ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Alt / Baritón (E♭)
+            Koncertné (C)
           </button>
         </div>
       </div>

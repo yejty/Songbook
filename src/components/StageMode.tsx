@@ -38,7 +38,7 @@ export const StageMode: React.FC<StageModeProps> = ({
   allSongs,
   activeSetlist,
   initialSemitones = 0,
-  initialInstrument = 'concert',
+  initialInstrument = 'alto_sax',
   onExit,
 }) => {
   const { lang, t } = useI18n();
@@ -317,9 +317,8 @@ export const StageMode: React.FC<StageModeProps> = ({
             onChange={(e) => setInstrument(e.target.value as InstrumentType)}
             className="bg-zinc-900 text-amber-300 font-semibold text-xs border border-zinc-700 rounded-xl px-2.5 py-1.5 cursor-pointer focus:outline-none"
           >
-            <option value="concert">Concert (C)</option>
-            <option value="tenor_sax">Tenor Sax (B♭)</option>
-            <option value="alto_sax">Alto Sax (E♭)</option>
+            <option value="alto_sax">🎷 Alt Saxofón (E♭)</option>
+            <option value="concert">Koncertné (C)</option>
           </select>
 
           {/* Quick semitone transposer */}

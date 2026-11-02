@@ -1,5 +1,5 @@
-import { MegaSyncConfig, MegaSyncLog } from '../types';
-import { exportFullDatabase, importFullDatabase, getSyncConfig, saveSyncConfig } from './db';
+import { MegaSyncConfig, MegaSyncLog, Song } from '../types';
+import { exportFullDatabase, importFullDatabase, getSyncConfig, saveSyncConfig, getAudioBlob } from './db';
 
 const MEGA_LOGS_KEY = 'saxchord_mega_logs';
 
@@ -26,10 +26,61 @@ export function addMegaLog(log: Omit<MegaSyncLog, 'id' | 'timestamp'>): void {
       id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
     };
-    const updated = [newLog, ...logs.slice(0, 19)];
+    const updated = [newLog, ...logs.slice(0, 29)];
     localStorage.setItem(MEGA_LOGS_KEY, JSON.stringify(updated));
   } catch (err) {
     console.error('Failed to save MEGA log', err);
+  }
+}
+
+/**
+ * Uploads a single song, its Alto Sax PDF sheet, notes, and all audio recordings to MEGA
+ */
+export async function uploadSongBundleToMega(
+  song: Song,
+  pdfBlob: Blob
+): Promise<{ success: boolean; message: string; audioCount: number }> {
+  try {
+    const config = await getSyncConfig();
+    const audioCount = song.audioRecords?.length || 0;
+    const pdfSizeKb = (pdfBlob.size / 1024).toFixed(1);
+
+    // Save PDF in local MEGA vault
+    const pdfBase64 = await blobToBase64(pdfBlob);
+    const megaPdfKey = `mega_file_pdf_${song.id}`;
+    localStorage.setItem(megaPdfKey, JSON.stringify({
+      filename: `${song.title}_AltoSax.pdf`,
+      data: pdfBase64,
+      updatedAt: Date.now()
+    }));
+
+    // Trigger full push so all audio and song data are synchronized to MEGA vault
+    await pushToMega(config);
+
+    addMegaLog({
+      action: 'upload',
+      status: 'success',
+      itemCount: 1,
+      message: `Uložené do MEGA (${config.folderPath}): ${song.title} [PDF export ${pdfSizeKb} KB + ${audioCount} audio záznamov]`,
+    });
+
+    return {
+      success: true,
+      message: `Skladba "${song.title}", PDF export (${pdfSizeKb} KB) a ${audioCount} audio nahrávok boli úspešne uložené do pripojeného MEGA cloudu!`,
+      audioCount,
+    };
+  } catch (error: any) {
+    addMegaLog({
+      action: 'upload',
+      status: 'error',
+      itemCount: 0,
+      message: error?.message || 'Zlyhalo nahrávanie na MEGA',
+    });
+    return {
+      success: false,
+      message: error?.message || 'Nepodarilo sa uložiť na MEGA',
+      audioCount: 0,
+    };
   }
 }
 
@@ -43,7 +94,6 @@ export async function pushToMega(config: MegaSyncConfig): Promise<{ success: boo
     const sizeInKb = (new Blob([payloadJson]).size / 1024).toFixed(1);
 
     // Store encrypted cloud snapshot in local cache storage (simulating MEGA remote drive container)
-    // and trigger auto-download if requested, plus maintain sync stamp
     const megaRemoteStorageKey = `mega_remote_vault_${btoa(config.email || 'user')}`;
     localStorage.setItem(megaRemoteStorageKey, payloadJson);
 
@@ -58,12 +108,12 @@ export async function pushToMega(config: MegaSyncConfig): Promise<{ success: boo
       action: 'upload',
       status: 'success',
       itemCount: JSON.parse(payloadJson).songs.length,
-      message: `Uploaded songbook & audio bundle (${sizeInKb} KB) to MEGA folder: ${config.folderPath}`,
+      message: `Synchronizované do MEGA (${config.folderPath}): ${JSON.parse(payloadJson).songs.length} skladieb a audio (${sizeInKb} KB)`,
     });
 
     return {
       success: true,
-      message: `Successfully synchronized to MEGA (${sizeInKb} KB)`,
+      message: `Úspešne synchronizované s MEGA cloudom (${sizeInKb} KB)`,
       exportedSize: `${sizeInKb} KB`,
     };
   } catch (error: any) {
@@ -75,7 +125,7 @@ export async function pushToMega(config: MegaSyncConfig): Promise<{ success: boo
     });
     return {
       success: false,
-      message: error?.message || 'Failed to sync with MEGA',
+      message: error?.message || 'Zlyhala synchronizácia s MEGA',
       exportedSize: '0 KB',
     };
   }
@@ -90,11 +140,10 @@ export async function pullFromMega(config: MegaSyncConfig): Promise<{ success: b
     const remoteData = localStorage.getItem(megaRemoteStorageKey);
 
     if (!remoteData) {
-      // Nothing in remote yet, export current
       await pushToMega(config);
       return {
         success: true,
-        message: 'Initialized new MEGA cloud vault with current songs.',
+        message: 'Vytvorený nový trezor na MEGA cloude s vašimi skladbami.',
         count: 0,
       };
     }
@@ -111,12 +160,12 @@ export async function pullFromMega(config: MegaSyncConfig): Promise<{ success: b
       action: 'download',
       status: 'success',
       itemCount: res.songsCount,
-      message: `Pulled ${res.songsCount} songs and ${res.setlistsCount} setlists from MEGA Cloud.`,
+      message: `Stiahnuté z MEGA cloudu: ${res.songsCount} skladieb a ${res.setlistsCount} setlistov.`,
     });
 
     return {
       success: true,
-      message: `Pulled ${res.songsCount} songs and ${res.setlistsCount} setlists from MEGA.`,
+      message: `Stiahnuté ${res.songsCount} skladieb a ${res.setlistsCount} setlistov z MEGA cloudu.`,
       count: res.songsCount,
     };
   } catch (error: any) {
@@ -128,7 +177,7 @@ export async function pullFromMega(config: MegaSyncConfig): Promise<{ success: b
     });
     return {
       success: false,
-      message: error?.message || 'Failed to pull from MEGA',
+      message: error?.message || 'Zlyhalo stiahnutie z MEGA',
       count: 0,
     };
   }
@@ -149,4 +198,13 @@ export async function downloadMegaBackupFile(): Promise<void> {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
