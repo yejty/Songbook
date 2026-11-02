@@ -1,0 +1,6 @@
+{
+  "name": "SaxChord Stage - Songbook & Live Gig Setlists",
+  "description": "Offline-first ChordPro lyrics and chords songbook with live stage mode, saxophone transposition, audio recorder, setlists, and MEGA cloud sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
