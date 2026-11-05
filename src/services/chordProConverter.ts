@@ -268,3 +268,16 @@ export function convertToChordPro(rawText: string, defaultTitle?: string, defaul
     detectedKey,
   };
 }
+
+/**
+ * Convenience wrapper returning ChordPro string directly
+ */
+export function convertRawTextToChordPro(
+  rawText: string,
+  defaultTitle?: string,
+  defaultArtist?: string,
+  defaultKey?: string
+): string {
+  const res = convertToChordPro(rawText, defaultTitle, defaultArtist);
+  return res.chordProText;
+}

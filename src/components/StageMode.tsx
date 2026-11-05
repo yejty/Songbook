@@ -22,6 +22,7 @@ import {
   Sliders,
   Sparkles,
   Volume2,
+  FileText,
 } from 'lucide-react';
 
 interface StageModeProps {
@@ -59,6 +60,10 @@ export const StageMode: React.FC<StageModeProps> = ({
 
   // Show Saxophone Solo Card overlay
   const [showSaxOverlay, setShowSaxOverlay] = useState<boolean>(false);
+
+  // View Mode: 'chords' or 'sheets' (if scanned sheet music / PDF is attached)
+  const [stageViewMode, setStageViewMode] = useState<'chords' | 'sheets'>('chords');
+  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState<number>(0);
 
   // Visual metronome state
   const [showMetronome, setShowMetronome] = useState<boolean>(false);
@@ -311,6 +316,22 @@ export const StageMode: React.FC<StageModeProps> = ({
 
         {/* Right: Instrument Pitch & Transpose quick switches */}
         <div className="flex items-center gap-2">
+          {/* Toggle between Chords and Scanned Sheets / Notes on stage */}
+          {currentSong.sheetAttachments && currentSong.sheetAttachments.length > 0 && (
+            <button
+              onClick={() => setStageViewMode(stageViewMode === 'chords' ? 'sheets' : 'chords')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                stageViewMode === 'sheets'
+                  ? 'bg-amber-500 text-black border-amber-400 font-extrabold shadow-md'
+                  : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:text-white'
+              }`}
+              title="Prepnúť zobrazenie na pódiu: Akordy ↔ Noty / Sken"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{stageViewMode === 'sheets' ? '🎼 Noty' : '🎸 Akordy'}</span>
+            </button>
+          )}
+
           {/* Instrument select */}
           <select
             value={instrument}
@@ -348,10 +369,11 @@ export const StageMode: React.FC<StageModeProps> = ({
         className="flex-1 overflow-y-auto px-6 md:px-16 py-8 space-y-6 scroll-smooth"
         style={{ scrollBehavior: 'smooth' }}
       >
-        {/* Stage Performance Cue Banner (if any) */}
-        {currentSong.performanceNotes && currentSong.performanceNotes.length > 0 && (
+        {/* Stage Performance Cue & Personal Annotations Banner */}
+        {((currentSong.performanceNotes && currentSong.performanceNotes.length > 0) ||
+          (currentSong.personalAnnotations && currentSong.personalAnnotations.length > 0)) && (
           <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-500/30 flex flex-wrap gap-2.5">
-            {currentSong.performanceNotes.map((note) => (
+            {currentSong.performanceNotes?.map((note) => (
               <span
                 key={note.id}
                 className="px-3 py-1 rounded-xl bg-zinc-900 text-amber-300 text-xs md:text-sm font-semibold border border-zinc-800 flex items-center gap-1.5"
@@ -360,73 +382,131 @@ export const StageMode: React.FC<StageModeProps> = ({
                 <span>{note.text}</span>
               </span>
             ))}
+            {currentSong.personalAnnotations?.map((ann) => (
+              <span
+                key={ann.id}
+                className="px-3 py-1 rounded-xl bg-zinc-900 text-sky-300 text-xs md:text-sm font-semibold border border-sky-500/30 flex items-center gap-1.5"
+              >
+                <span className="text-[10px] uppercase font-bold text-sky-400">📝 [{ann.category}]</span>
+                <span>{ann.text}</span>
+              </span>
+            ))}
           </div>
         )}
 
-        {/* High Contrast Chords & Lyrics Render */}
-        <div className="stage-lyrics-flow space-y-4 max-w-5xl mx-auto">
-          {parsed.lines.map((line) => {
-            if (line.type === 'empty') {
-              return <div key={line.id} className="h-6" />;
-            }
-
-            if (line.type === 'comment') {
-              return (
-                <div
-                  key={line.id}
-                  className="my-3 px-4 py-2 rounded-xl bg-amber-500/20 border-l-4 border-amber-400 text-amber-300 text-base md:text-lg font-bold tracking-wide"
-                >
-                  ⚡ {line.commentText}
-                </div>
-              );
-            }
-
-            if (line.type === 'section-start') {
-              return (
-                <div
-                  key={line.id}
-                  className="pt-4 pb-1 text-sm md:text-base font-extrabold text-amber-400 uppercase tracking-widest border-b border-zinc-800"
-                >
-                  {line.directiveValue || line.sectionType}
-                </div>
-              );
-            }
-
-            if (line.type === 'section-end') {
-              return <div key={line.id} className="pb-2" />;
-            }
-
-            const isChorus = line.sectionType === 'chorus';
-
-            return (
-              <div
-                key={line.id}
-                className={`flex flex-wrap items-baseline gap-x-3 my-2 ${
-                  isChorus ? 'border-l-4 border-amber-400 pl-4 bg-amber-950/20 py-2 rounded-r-xl' : ''
-                }`}
-              >
-                {line.segments?.map((seg, idx) => (
-                  <div key={idx} className="inline-flex flex-col items-start align-bottom leading-tight">
-                    {seg.chord ? (
-                      <span
-                        className={`font-mono font-black text-amber-300 tracking-wider ${fontSizes.chord} select-all`}
-                      >
-                        {seg.chord}
-                      </span>
-                    ) : (
-                      <span className={fontSizes.chord}>&nbsp;</span>
-                    )}
-                    <span
-                      className={`font-sans font-medium text-white whitespace-pre ${fontSizes.text}`}
-                    >
-                      {seg.text || ' '}
-                    </span>
-                  </div>
+        {/* High Contrast Chords & Lyrics Render OR Scanned Sheet Music Attachment */}
+        {stageViewMode === 'sheets' && currentSong.sheetAttachments && currentSong.sheetAttachments.length > 0 ? (
+          <div className="max-w-5xl mx-auto flex flex-col items-center gap-4 py-4">
+            {/* Sheet Page Switcher */}
+            {currentSong.sheetAttachments.length > 1 && (
+              <div className="flex items-center gap-2 p-1.5 bg-zinc-900 rounded-xl border border-zinc-800">
+                {currentSong.sheetAttachments.map((att, idx) => (
+                  <button
+                    key={att.id}
+                    onClick={() => setActiveAttachmentIndex(idx)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      activeAttachmentIndex === idx
+                        ? 'bg-amber-500 text-black'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Strana / Notový list {idx + 1}
+                  </button>
                 ))}
               </div>
-            );
-          })}
-        </div>
+            )}
+
+            {/* Display Active Sheet Music */}
+            {(() => {
+              const att = currentSong.sheetAttachments[activeAttachmentIndex] || currentSong.sheetAttachments[0];
+              const src = att.blobUrl || att.base64Data;
+              if (att.type === 'pdf') {
+                return (
+                  <div className="w-full bg-zinc-900 rounded-2xl border border-zinc-800 p-2 text-center">
+                    <iframe
+                      src={src ? `${src}#toolbar=0` : ''}
+                      title={att.name}
+                      className="w-full h-[75vh] rounded-xl border border-zinc-800"
+                    />
+                  </div>
+                );
+              }
+              return (
+                <div className="w-full flex justify-center">
+                  <img
+                    src={src}
+                    alt={att.name}
+                    className="max-h-[82vh] w-auto rounded-xl shadow-2xl object-contain border border-zinc-800"
+                  />
+                </div>
+              );
+            })()}
+          </div>
+        ) : (
+          <div className="stage-lyrics-flow space-y-4 max-w-5xl mx-auto">
+            {parsed.lines.map((line) => {
+              if (line.type === 'empty') {
+                return <div key={line.id} className="h-6" />;
+              }
+
+              if (line.type === 'comment') {
+                return (
+                  <div
+                    key={line.id}
+                    className="my-3 px-4 py-2 rounded-xl bg-amber-500/20 border-l-4 border-amber-400 text-amber-300 text-base md:text-lg font-bold tracking-wide"
+                  >
+                    ⚡ {line.commentText}
+                  </div>
+                );
+              }
+
+              if (line.type === 'section-start') {
+                return (
+                  <div
+                    key={line.id}
+                    className="pt-4 pb-1 text-sm md:text-base font-extrabold text-amber-400 uppercase tracking-widest border-b border-zinc-800"
+                  >
+                    {line.directiveValue || line.sectionType}
+                  </div>
+                );
+              }
+
+              if (line.type === 'section-end') {
+                return <div key={line.id} className="pb-2" />;
+              }
+
+              const isChorus = line.sectionType === 'chorus';
+
+              return (
+                <div
+                  key={line.id}
+                  className={`flex flex-wrap items-baseline gap-x-3 my-2 ${
+                    isChorus ? 'border-l-4 border-amber-400 pl-4 bg-amber-950/20 py-2 rounded-r-xl' : ''
+                  }`}
+                >
+                  {line.segments?.map((seg, idx) => (
+                    <div key={idx} className="inline-flex flex-col items-start align-bottom leading-tight">
+                      {seg.chord ? (
+                        <span
+                          className={`font-mono font-black text-amber-300 tracking-wider ${fontSizes.chord} select-all`}
+                        >
+                          {seg.chord}
+                        </span>
+                      ) : (
+                        <span className={fontSizes.chord}>&nbsp;</span>
+                      )}
+                      <span
+                        className={`font-sans font-medium text-white whitespace-pre ${fontSizes.text}`}
+                      >
+                        {seg.text || ' '}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* End of song spacer */}
         <div className="h-32 text-center text-zinc-600 text-sm font-mono pt-12">

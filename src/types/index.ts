@@ -27,6 +27,37 @@ export interface PerformanceNote {
   color?: string;
 }
 
+export interface PersonalAnnotation {
+  id: string;
+  category: 'vocal' | 'sax' | 'gear' | 'memo' | 'cue';
+  text: string;
+  color?: 'amber' | 'emerald' | 'purple' | 'rose' | 'sky';
+  createdAt: number;
+}
+
+export interface SheetAttachment {
+  id: string;
+  name: string;
+  type: 'pdf' | 'image';
+  blobData?: Blob;
+  blobUrl?: string;
+  base64Data?: string;
+  mimeType: string;
+  uploadedAt: number;
+}
+
+export interface SheetNotation {
+  id: string;
+  title: string;
+  keySignature: string; // e.g. "G", "D", "A", "C"
+  timeSignature: string; // "4/4", "3/4", "6/8"
+  tempo: number;
+  clef: 'treble' | 'bass';
+  abcSource: string; // ABC notation code
+  notesText?: string;
+  updatedAt: number;
+}
+
 export interface Song {
   id: string;
   title: string;
@@ -40,9 +71,13 @@ export interface Song {
   tags: string[];
   chordProText: string;
   performanceNotes: PerformanceNote[];
+  personalAnnotations?: PersonalAnnotation[];
+  sheetAttachments?: SheetAttachment[];
+  sheetNotation?: SheetNotation;
   saxSolos: SaxSoloNote[];
   audioRecords: AudioRecord[];
   isFavorite: boolean;
+  isMySong?: boolean; // Moja vlastná pieseň / autorská tvorba
   lastModified: number;
 }
 
@@ -82,4 +117,18 @@ export interface MegaSyncLog {
   status: 'success' | 'error';
   itemCount: number;
   message: string;
+}
+
+// Representing a folder structure item from MEGA Cloud
+export interface MegaImportFolder {
+  id: string;
+  folderName: string;
+  songTitle: string;
+  artist: string;
+  key?: string;
+  audioFiles: { name: string; size: string; type: string; base64Data?: string }[];
+  pdfFiles: { name: string; size: string; base64Data?: string }[];
+  imageFiles: { name: string; size: string; base64Data?: string }[];
+  chordFiles: { name: string; content?: string }[];
+  notationFiles: { name: string; content?: string }[];
 }

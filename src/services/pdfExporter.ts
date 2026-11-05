@@ -4,7 +4,6 @@ import { parseChordPro } from './chordProParser';
 import {
   transposeChord,
   getInstrumentSemitoneOffset,
-  getInstrumentLabel,
   transposeSaxNotesText,
 } from './transposer';
 
@@ -12,15 +11,19 @@ export interface PdfExportOptions {
   instrument?: InstrumentType;
   semitones?: number;
   preferFlats?: boolean;
+  mode?: 'both' | 'lyrics_only'; // 'both' = Lyrics + Chords, 'lyrics_only' = Lyrics only
 }
 
 /**
  * Generates a clean, stage-ready PDF document for a song with chords, notes, and saxophone solos
+ * Supports both "Chords + Lyrics" and "Lyrics Only" modes!
  */
 export function generateSongPdfBlob(
   song: Song,
   options: PdfExportOptions = {}
 ): { doc: jsPDF; blob: Blob; filename: string } {
+  const mode = options.mode || 'both';
+  const isLyricsOnly = mode === 'lyrics_only';
   const instrument = options.instrument || 'alto_sax';
   const semitones = options.semitones || 0;
   const preferFlats = options.preferFlats || false;
@@ -65,47 +68,64 @@ export function generateSongPdfBlob(
   doc.setFontSize(10);
   doc.text(song.artist, margin + 4, y + 8);
 
-  // Key & Tempo badge
+  // Mode badge & Key / Tempo
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(245, 158, 11); // amber
-  const keyLabel = `Tónina: ${effectiveKey} | Alt Sax (E♭)`;
-  const keyWidth = doc.getTextWidth(keyLabel);
-  doc.text(keyLabel, pageWidth - margin - keyWidth - 4, y + 2);
 
-  const detailsLabel = `${song.tempo ? `${song.tempo} BPM  ` : ''}${song.capo ? `Capo ${song.capo}  ` : ''}${song.timeSignature || '4/4'}`;
-  const detailsWidth = doc.getTextWidth(detailsLabel);
-  doc.setTextColor(148, 163, 184);
-  doc.text(detailsLabel, pageWidth - margin - detailsWidth - 4, y + 8);
+  if (isLyricsOnly) {
+    const modeLabel = 'TEXT PIESNE (LYRICS ONLY)';
+    const modeWidth = doc.getTextWidth(modeLabel);
+    doc.text(modeLabel, pageWidth - margin - modeWidth - 4, y + 2);
+
+    const detailsLabel = `${song.tempo ? `${song.tempo} BPM  ` : ''}${song.timeSignature || '4/4'}`;
+    const detailsWidth = doc.getTextWidth(detailsLabel);
+    doc.setTextColor(148, 163, 184);
+    doc.text(detailsLabel, pageWidth - margin - detailsWidth - 4, y + 8);
+  } else {
+    const keyLabel = `Tónina: ${effectiveKey} | Alt Sax (E♭)`;
+    const keyWidth = doc.getTextWidth(keyLabel);
+    doc.text(keyLabel, pageWidth - margin - keyWidth - 4, y + 2);
+
+    const detailsLabel = `${song.tempo ? `${song.tempo} BPM  ` : ''}${song.capo ? `Capo ${song.capo}  ` : ''}${song.timeSignature || '4/4'}`;
+    const detailsWidth = doc.getTextWidth(detailsLabel);
+    doc.setTextColor(148, 163, 184);
+    doc.text(detailsLabel, pageWidth - margin - detailsWidth - 4, y + 8);
+  }
 
   y += 26;
 
-  // Performance Notes & Stage Cues (if any)
-  if (song.performanceNotes && song.performanceNotes.length > 0) {
+  // Personal Annotations & Performance Notes
+  const allNotes = [
+    ...(song.performanceNotes || []).map((n) => `[${n.tag.toUpperCase()}] ${n.text}`),
+    ...(song.personalAnnotations || []).map((pa) => `[${pa.category.toUpperCase()}] ${pa.text}`),
+  ];
+
+  if (allNotes.length > 0) {
     checkPageBreak(25);
     doc.setFillColor(254, 243, 199); // light amber
     doc.setDrawColor(245, 158, 11);
-    doc.rect(margin, y, pageWidth - 2 * margin, 6 + song.performanceNotes.length * 6, 'FD');
+    doc.rect(margin, y, pageWidth - 2 * margin, 6 + allNotes.length * 5.5, 'FD');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(180, 83, 9);
-    doc.text('POZNÁMKY K VYSTÚPENIU & ARANŽMÁN (STAGE CUES):', margin + 3, y + 4.5);
+    doc.text('OSOBNÉ POZNÁMKY & PÓDIOVÉ SIGNÁLY (PERSONAL ANNOTATIONS & CUES):', margin + 3, y + 4.5);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(30, 41, 59);
 
-    song.performanceNotes.forEach((note, idx) => {
+    allNotes.forEach((noteText, idx) => {
       const lineY = y + 9.5 + idx * 5.5;
-      doc.text(`• [${note.tag.toUpperCase()}] ${note.text}`, margin + 4, lineY);
+      doc.text(`• ${noteText}`, margin + 4, lineY);
     });
 
-    y += 12 + song.performanceNotes.length * 5.5;
+    y += 10 + allNotes.length * 5.5;
   }
 
-  // Saxophone Solo Section in PDF (specifically transposed for Alto Sax!)
-  if (song.saxSolos && song.saxSolos.length > 0) {
+  // Saxophone Solo Section in PDF (only in 'both' mode or if solos exist)
+  if (!isLyricsOnly && song.saxSolos && song.saxSolos.length > 0) {
     checkPageBreak(30);
     const solo = song.saxSolos[0];
     const transposedSoloNotes = transposeSaxNotesText(solo.notesContent, instrumentOffset, instrument !== 'concert');
@@ -122,8 +142,7 @@ export function generateSongPdfBlob(
     doc.setFont('courier', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(180, 83, 9);
-    
-    // Split lines if needed
+
     const soloLines = doc.splitTextToSize(transposedSoloNotes, pageWidth - 2 * margin - 8);
     doc.text(soloLines.slice(0, 3), margin + 4, y + 10);
 
@@ -137,11 +156,11 @@ export function generateSongPdfBlob(
     y += 28;
   }
 
-  // Render Lyrics & Chords
-  doc.setFontSize(9.5);
+  // Render Lyrics (and optional Chords)
+  doc.setFontSize(isLyricsOnly ? 10.5 : 9.5);
 
   parsed.lines.forEach((line) => {
-    checkPageBreak(12);
+    checkPageBreak(isLyricsOnly ? 8 : 12);
 
     if (line.type === 'empty') {
       y += 4;
@@ -169,12 +188,23 @@ export function generateSongPdfBlob(
       return;
     }
 
-    // Render chord-lyric segments
+    // LYRICS ONLY MODE
+    if (isLyricsOnly) {
+      const fullText = (line.segments || []).map((s) => s.text).join('');
+      if (fullText.trim()) {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(15, 23, 42);
+        doc.text(fullText, margin, y);
+        y += 6;
+      }
+      return;
+    }
+
+    // BOTH (CHORDS + LYRICS) MODE
     let currentX = margin;
     const hasAnyChord = line.segments?.some((s) => Boolean(s.chord));
 
     if (hasAnyChord) {
-      // First print the chords line above
       let chordX = margin;
       line.segments?.forEach((seg) => {
         if (seg.chord) {
@@ -193,7 +223,6 @@ export function generateSongPdfBlob(
       y += 4.5;
     }
 
-    // Now print lyrics line
     line.segments?.forEach((seg) => {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
@@ -209,7 +238,8 @@ export function generateSongPdfBlob(
   });
 
   const blob = doc.output('blob');
-  const filename = `${song.title.replace(/[^a-zA-Z0-9_\u00C0-\u017F]/g, '_')}_AltoSax.pdf`;
+  const modeSuffix = isLyricsOnly ? 'LyricsOnly' : 'Chords_Lyrics_AltoSax';
+  const filename = `${song.title.replace(/[^a-zA-Z0-9_\u00C0-\u017F]/g, '_')}_${modeSuffix}.pdf`;
 
   return { doc, blob, filename };
 }

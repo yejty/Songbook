@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Song, SaxSoloNote, PerformanceNote, AudioRecord, InstrumentType } from '../types';
+import { Song, SaxSoloNote, PerformanceNote, PersonalAnnotation, AudioRecord, InstrumentType } from '../types';
 import { parseChordPro, transposeChordProText } from '../services/chordProParser';
 import {
   ALL_KEYS,
@@ -11,6 +11,10 @@ import { useI18n } from '../services/i18n';
 import { SaxSoloSection } from './SaxSoloSection';
 import { AudioSection } from './AudioSection';
 import { PerformanceNotesSection } from './PerformanceNotesSection';
+import { PersonalAnnotationsSection } from './PersonalAnnotationsSection';
+import { VisualChordEditor } from './VisualChordEditor';
+import { SheetMusicViewer } from './SheetMusicViewer';
+import { NotationEditor } from './NotationEditor';
 import { downloadSongPdf, generateSongPdfBlob } from '../services/pdfExporter';
 import { uploadSongBundleToMega } from '../services/megaSync';
 import {
@@ -29,6 +33,13 @@ import {
   CheckCircle,
   FileText,
   Music,
+  Eye,
+  EyeOff,
+  Type,
+  MousePointerClick,
+  Code,
+  X,
+  Share2,
 } from 'lucide-react';
 
 interface SongDetailProps {
@@ -50,6 +61,7 @@ export const SongDetail: React.FC<SongDetailProps> = ({
 
   // Mode: View or Edit
   const [isEditingChordPro, setIsEditingChordPro] = useState(false);
+  const [editTab, setEditTab] = useState<'visual' | 'code'>('visual'); // 'visual' for placing chords, 'code' for raw text
   const [editedText, setEditedText] = useState(song.chordProText);
   const [editedTitle, setEditedTitle] = useState(song.title);
   const [editedArtist, setEditedArtist] = useState(song.artist);
@@ -57,13 +69,23 @@ export const SongDetail: React.FC<SongDetailProps> = ({
   const [editedTempo, setEditedTempo] = useState<number | undefined>(song.tempo);
   const [editedCapo, setEditedCapo] = useState<number | undefined>(song.capo);
   const [editedTags, setEditedTags] = useState<string>(song.tags.join(', '));
+  const [editedIsMySong, setEditedIsMySong] = useState<boolean>(Boolean(song.isMySong));
 
-  // Transposition states: Default to Alto Saxophone (Eb) as requested!
+  // Viewer controls: Toggle chords on/off, Font zoom
+  const [showChords, setShowChords] = useState<boolean>(true);
+  const [fontSizeDelta, setFontSizeDelta] = useState<number>(0); // -1, 0, 1, 2
+
+  // Transposition states: Default to Alto Saxophone (Eb)
   const [transpositionSemitones, setTranspositionSemitones] = useState<number>(0);
   const [preferFlats, setPreferFlats] = useState<boolean>(false);
   const [viewInstrument, setViewInstrument] = useState<InstrumentType>('alto_sax');
 
-  // MEGA cloud upload state
+  // Main View Switcher: Chords Sheet, Scanned Sheet Music & PDFs, or Music Notation Editor
+  const [mainViewTab, setMainViewTab] = useState<'chords' | 'sheet_viewer' | 'notation_editor'>('chords');
+
+  // PDF Export Modal state
+  const [showPdfModal, setShowPdfModal] = useState<boolean>(false);
+  const [pdfExportMode, setPdfExportMode] = useState<'both' | 'lyrics_only'>('both');
   const [isUploadingToMega, setIsUploadingToMega] = useState<boolean>(false);
   const [megaUploadSuccessMsg, setMegaUploadSuccessMsg] = useState<string | null>(null);
 
@@ -94,6 +116,10 @@ export const SongDetail: React.FC<SongDetailProps> = ({
     onSaveSong({ ...song, isFavorite: !song.isFavorite });
   };
 
+  const handleToggleMySong = () => {
+    onSaveSong({ ...song, isMySong: !song.isMySong });
+  };
+
   const handleSaveChordProEdit = () => {
     const updatedTags = editedTags
       .split(',')
@@ -108,38 +134,43 @@ export const SongDetail: React.FC<SongDetailProps> = ({
       tempo: editedTempo,
       capo: editedCapo,
       tags: updatedTags,
+      isMySong: editedIsMySong,
       chordProText: editedText,
     };
     onSaveSong(updated);
     setIsEditingChordPro(false);
   };
 
-  // PDF Download directly
-  const handleDownloadPdf = () => {
+  // PDF Download Execution
+  const executeDownloadPdf = (mode: 'both' | 'lyrics_only') => {
     downloadSongPdf(song, {
       instrument: viewInstrument,
       semitones: transpositionSemitones,
       preferFlats,
+      mode,
     });
+    setShowPdfModal(false);
   };
 
   // Upload Song PDF + Audio records directly to MEGA Cloud
-  const handleSaveToMegaCloud = async () => {
+  const executeSaveToMegaCloud = async (mode: 'both' | 'lyrics_only') => {
     try {
       setIsUploadingToMega(true);
       setMegaUploadSuccessMsg(null);
 
-      // Generate Alto Sax PDF Blob
+      // Generate PDF Blob
       const { blob: pdfBlob } = generateSongPdfBlob(song, {
         instrument: 'alto_sax',
         semitones: transpositionSemitones,
         preferFlats,
+        mode,
       });
 
       // Save PDF and all audio takes to MEGA Cloud
       const res = await uploadSongBundleToMega(song, pdfBlob);
       if (res.success) {
         setMegaUploadSuccessMsg(res.message);
+        setShowPdfModal(false);
         setTimeout(() => setMegaUploadSuccessMsg(null), 6000);
       } else {
         alert(res.message);
@@ -151,7 +182,6 @@ export const SongDetail: React.FC<SongDetailProps> = ({
     }
   };
 
-  // Quick insert buttons in editor
   const insertTextAtCursor = (textToInsert: string) => {
     setEditedText((prev) => prev + '\n' + textToInsert);
   };
@@ -164,49 +194,57 @@ export const SongDetail: React.FC<SongDetailProps> = ({
           <button
             onClick={onBack}
             className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition cursor-pointer"
-            title={lang === 'sk' ? 'Späť na zoznam skladieb' : 'Back to songs'}
+            title={lang === 'sk' ? 'Späť na knižnicu skladieb' : 'Back to library'}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-xl md:text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
-              <span>{song.title}</span>
-              <button
-                onClick={handleToggleFavorite}
-                className="cursor-pointer text-amber-400 hover:scale-110 transition"
-              >
-                <Star
-                  className={`w-5 h-5 ${
-                    song.isFavorite ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
-                  }`}
-                />
-              </button>
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl md:text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
+                <span>{song.title}</span>
+                <button
+                  onClick={handleToggleFavorite}
+                  className="cursor-pointer text-amber-400 hover:scale-110 transition"
+                  title="Pridať medzi obľúbené"
+                >
+                  <Star
+                    className={`w-5 h-5 ${
+                      song.isFavorite ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
+                    }`}
+                  />
+                </button>
+              </h1>
+              {song.isMySong && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                  {lang === 'sk' ? 'Moja pieseň' : 'My Song'}
+                </span>
+              )}
+            </div>
             <p className="text-sm font-medium text-slate-400">{song.artist}</p>
           </div>
         </div>
 
-        {/* Action Buttons: Stage Mode, MEGA Upload, PDF, Edit */}
+        {/* Action Buttons: Stage Mode, PDF Export options, Edit */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Export to MEGA Cloud */}
+          {/* PDF Export Hub (Supports Both & Lyrics Only!) */}
           <button
-            onClick={handleSaveToMegaCloud}
+            onClick={() => setShowPdfModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition cursor-pointer"
+            title="Exportovať PDF (iba text alebo akordy + text)"
+          >
+            <FileDown className="w-4 h-4 text-amber-400" />
+            <span>PDF Export</span>
+          </button>
+
+          {/* Quick direct upload to MEGA */}
+          <button
+            onClick={() => executeSaveToMegaCloud('both')}
             disabled={isUploadingToMega}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-600/90 hover:bg-red-500 text-white font-bold text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-50"
             title={lang === 'sk' ? 'Uložiť PDF a audio nahrávky do pripojeného MEGA cloudu' : 'Upload PDF & audio to MEGA cloud'}
           >
             <CloudUpload className="w-4 h-4" />
-            <span>{isUploadingToMega ? (lang === 'sk' ? 'Ukladám do MEGA...' : 'Uploading...') : (lang === 'sk' ? 'Uložiť do MEGA (PDF + Audio)' : 'Save to MEGA')}</span>
-          </button>
-
-          {/* Download PDF */}
-          <button
-            onClick={handleDownloadPdf}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition cursor-pointer"
-            title="Stiahnuť PDF notový list"
-          >
-            <FileDown className="w-4 h-4 text-amber-400" />
-            <span>PDF</span>
+            <span>{isUploadingToMega ? 'Ukladám...' : 'MEGA Cloud'}</span>
           </button>
 
           {/* Start Live Stage Mode Button */}
@@ -231,6 +269,7 @@ export const SongDetail: React.FC<SongDetailProps> = ({
                 setEditedTempo(song.tempo);
                 setEditedCapo(song.capo);
                 setEditedTags(song.tags.join(', '));
+                setEditedIsMySong(Boolean(song.isMySong));
                 setIsEditingChordPro(true);
               }
             }}
@@ -307,6 +346,18 @@ export const SongDetail: React.FC<SongDetailProps> = ({
                   {song.timeSignature}
                 </div>
               )}
+
+              {/* Toggle My Song Badge */}
+              <button
+                onClick={handleToggleMySong}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                  song.isMySong
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                }`}
+              >
+                {song.isMySong ? '★ Moja tvorba' : '+ Označiť ako moju pieseň'}
+              </button>
             </div>
 
             {/* Instrument View Selector - Alto Sax as default & prominent */}
@@ -337,8 +388,9 @@ export const SongDetail: React.FC<SongDetailProps> = ({
             </div>
           </div>
 
-          {/* Transposition Step Bar */}
+          {/* Transposition Step Bar & Viewer Controls */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
+            {/* Transpose +/- */}
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <Sliders className="w-3.5 h-3.5 text-amber-400" />
@@ -386,18 +438,168 @@ export const SongDetail: React.FC<SongDetailProps> = ({
                 {preferFlats ? '♭ Flats' : '# Sharps'}
               </button>
             </div>
+
+            {/* Chord Sheet Viewer Controls: Show/Hide Chords & Font Zoom */}
+            <div className="flex items-center gap-2">
+              {/* Show/Hide Chords Toggle */}
+              <button
+                onClick={() => setShowChords(!showChords)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                  showChords
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-950 text-slate-400 border-slate-800'
+                }`}
+                title={showChords ? 'Zobraziť iba text bez akordov' : 'Zobraziť akordy nad textom'}
+              >
+                {showChords ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                <span>{showChords ? 'Akordy: Zapnuté' : 'Iba text'}</span>
+              </button>
+
+              {/* Font Zoom */}
+              <div className="flex items-center bg-slate-950 rounded-xl border border-slate-800 px-2 py-1 gap-1 text-xs text-slate-300">
+                <Type className="w-3 h-3 text-slate-400" />
+                <button
+                  onClick={() => setFontSizeDelta((d) => Math.max(-1, d - 1))}
+                  className="px-1 font-bold hover:text-white cursor-pointer"
+                >
+                  -
+                </button>
+                <span className="font-mono text-amber-400 text-xs">
+                  {fontSizeDelta === 0 ? '100%' : `${100 + fontSizeDelta * 20}%`}
+                </span>
+                <button
+                  onClick={() => setFontSizeDelta((d) => Math.min(2, d + 1))}
+                  className="px-1 font-bold hover:text-white cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
+      {/* View Switcher: Chords Sheet, Scanned Sheet Music & PDFs, or Music Notation Editor */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/80 p-2 rounded-2xl">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+          <button
+            onClick={() => setMainViewTab('chords')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold transition cursor-pointer ${
+              mainViewTab === 'chords'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Music className="w-4 h-4" />
+            <span>{lang === 'sk' ? 'Akordy a text (Chord Sheet)' : 'Chords & Lyrics'}</span>
+          </button>
+
+          <button
+            onClick={() => setMainViewTab('sheet_viewer')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold transition cursor-pointer ${
+              mainViewTab === 'sheet_viewer'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>{lang === 'sk' ? 'Noty, PDF a Fotky' : 'Sheet Music & Scans'}</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+              mainViewTab === 'sheet_viewer' ? 'bg-slate-950 text-white font-bold' : 'bg-slate-800 text-slate-300'
+            }`}>
+              {song.sheetAttachments?.length || 0}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setMainViewTab('notation_editor')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-bold transition cursor-pointer ${
+              mainViewTab === 'notation_editor'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{lang === 'sk' ? 'Notový editor (Osnova)' : 'Notation Editor'}</span>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-400 hidden sm:block pr-3">
+          {mainViewTab === 'chords' && (lang === 'sk' ? 'Text s akordami v ChordPro formáte' : 'ChordPro formatted lyrics')}
+          {mainViewTab === 'sheet_viewer' && (lang === 'sk' ? 'Prehliadač nôt, PDF a fotografií akordov' : 'Viewer for sheet music & PDFs')}
+          {mainViewTab === 'notation_editor' && (lang === 'sk' ? '5-riadková osnova pre Alt Sax a exporty' : '5-line stave for Alto Sax & exports')}
+        </div>
+      </div>
+
       {/* SIDE-BY-SIDE MAIN LAYOUT:
-          LEFT: Lyrics & Chords Sheet
-          RIGHT: Sticky Side Panel with Performance Notes, Alto Sax Solos, and Audio Takes */}
+          LEFT: Lyrics & Chords Sheet / Sheet Music Viewer / Notation Editor
+          RIGHT: Sticky Side Panel with Personal Annotations, Alto Sax Solos, and Audio Takes */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column (Lg: 7 cols): Sheet Lyrics & Chords / Editor */}
+        {/* Left Column (Lg: 7 cols): Sheet Lyrics & Chords / Sheet Music / Editor */}
         <div className="lg:col-span-7 space-y-6">
-          {isEditingChordPro ? (
+          {mainViewTab === 'sheet_viewer' ? (
+            /* Tab 2: Sheet Music & Scanned Photos Viewer */
+            <SheetMusicViewer
+              attachments={song.sheetAttachments || []}
+              onUpdateAttachments={(updated) => onSaveSong({ ...song, sheetAttachments: updated })}
+            />
+          ) : mainViewTab === 'notation_editor' ? (
+            /* Tab 3: 5-line Stave Notation Editor */
+            <NotationEditor
+              notation={song.sheetNotation}
+              songTitle={song.title}
+              songArtist={song.artist}
+              songKey={effectiveKey}
+              onSaveNotation={(updatedNotation) => onSaveSong({ ...song, sheetNotation: updatedNotation })}
+              onUploadToMega={() => executeSaveToMegaCloud('both')}
+            />
+          ) : isEditingChordPro ? (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
+              {/* Editor sub-tab switcher: Visual Place Chords vs Raw Code */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    onClick={() => setEditTab('visual')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                      editTab === 'visual'
+                        ? 'bg-amber-500 text-slate-950 shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <MousePointerClick className="w-3.5 h-3.5" />
+                    <span>{lang === 'sk' ? 'Vizuálne umiestňovanie akordov (Place Chords)' : 'Visual Place Chords'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setEditTab('code')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer ${
+                      editTab === 'code'
+                        ? 'bg-amber-500 text-slate-950 shadow-md'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Code className="w-3.5 h-3.5" />
+                    <span>ChordPro Kód</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsEditingChordPro(false)}
+                    className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white bg-slate-800 cursor-pointer"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    onClick={handleSaveChordProEdit}
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition cursor-pointer shadow-lg active:scale-95"
+                  >
+                    {t.save}
+                  </button>
+                </div>
+              </div>
+
+              {/* Metadata Inputs */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <div>
                   <label className="block text-slate-400 mb-1">{t.title}</label>
@@ -433,93 +635,88 @@ export const SongDetail: React.FC<SongDetailProps> = ({
                 </div>
               </div>
 
-              {/* Quick Chord Insertion Toolset */}
-              <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-950 rounded-xl border border-slate-800 text-xs">
-                <span className="text-[11px] text-slate-400 font-medium mr-1">{lang === 'sk' ? 'Vložiť akord:' : 'Insert chord:'}</span>
-                {['[C]', '[D]', '[Dm]', '[E]', '[Em]', '[F]', '[G]', '[Am]', '[Bb]', '[B7]'].map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setEditedText((prev) => prev + c)}
-                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono font-bold cursor-pointer transition"
-                  >
-                    {c}
-                  </button>
-                ))}
-                <div className="h-4 w-px bg-slate-700 mx-1"></div>
-                <button
-                  type="button"
-                  onClick={() => insertTextAtCursor('{c: Alt Saxofón sólo}')}
-                  className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[11px] font-semibold cursor-pointer"
-                >
-                  + Alt Sax Tag
-                </button>
-                <button
-                  type="button"
-                  onClick={() => insertTextAtCursor('{start_of_chorus}\n[C]Refrén...\n{end_of_chorus}')}
-                  className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[11px] font-semibold cursor-pointer"
-                >
-                  + Chorus
-                </button>
-              </div>
-
-              <div>
-                <textarea
-                  rows={22}
-                  value={editedText}
-                  onChange={(e) => setEditedText(e.target.value)}
-                  className="w-full bg-slate-950 font-mono text-xs md:text-sm text-slate-200 border border-slate-800 rounded-xl p-4 leading-relaxed focus:border-amber-500 focus:outline-none"
+              {/* Sub-mode 1: Visual Chord Placement Editor */}
+              {editTab === 'visual' ? (
+                <VisualChordEditor
+                  chordProText={editedText}
+                  onChangeChordPro={setEditedText}
+                  currentKey={editedKey}
                 />
-              </div>
+              ) : (
+                /* Sub-mode 2: Raw ChordPro Code */
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+                    <span className="text-[11px] text-slate-400 font-medium mr-1">Rýchle akordy:</span>
+                    {['[C]', '[D]', '[Dm]', '[E]', '[Em]', '[F]', '[G]', '[Am]', '[Bb]', '[B7]'].map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditedText((prev) => prev + c)}
+                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 font-mono font-bold cursor-pointer transition"
+                      >
+                        {c}
+                      </button>
+                    ))}
+                    <div className="h-4 w-px bg-slate-700 mx-1"></div>
+                    <button
+                      type="button"
+                      onClick={() => insertTextAtCursor('{c: Alt Saxofón sólo}')}
+                      className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[11px] font-semibold cursor-pointer"
+                    >
+                      + Alt Sax
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => insertTextAtCursor('{start_of_chorus}\n[C]Refrén...\n{end_of_chorus}')}
+                      className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[11px] font-semibold cursor-pointer"
+                    >
+                      + Chorus
+                    </button>
+                  </div>
 
-              <div className="flex justify-between items-center pt-2">
-                <button
-                  onClick={() => {
-                    if (confirm(lang === 'sk' ? 'Naozaj chcete zmazať túto skladbu?' : 'Delete this song?')) {
-                      onDeleteSong(song.id);
-                    }
-                  }}
-                  className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg transition cursor-pointer"
-                >
-                  {t.deleteSong}
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsEditingChordPro(false)}
-                    className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white cursor-pointer"
-                  >
-                    {t.cancel}
-                  </button>
-                  <button
-                    onClick={handleSaveChordProEdit}
-                    className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 transition cursor-pointer shadow-lg active:scale-95"
-                  >
-                    {t.save}
-                  </button>
+                  <textarea
+                    rows={18}
+                    value={editedText}
+                    onChange={(e) => setEditedText(e.target.value)}
+                    className="w-full bg-slate-950 font-mono text-xs md:text-sm text-slate-200 border border-slate-800 rounded-xl p-4 leading-relaxed focus:border-amber-500 focus:outline-none"
+                  />
                 </div>
-              </div>
+              )}
             </div>
           ) : (
-            /* Sheet View */
+            /* Sheet Music & Lyrics Viewer */
             <div className="bg-slate-950 border border-slate-800/90 rounded-2xl p-5 md:p-8 shadow-2xl space-y-6">
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
                   <Music className="w-4 h-4" />
-                  <span>{lang === 'sk' ? 'Notový list & Text' : 'Sheet & Lyrics'}</span>
-                  {viewInstrument === 'alto_sax' && (
+                  <span>
+                    {showChords
+                      ? (lang === 'sk' ? 'Notový list: Akordy & Text' : 'Chord Sheet & Lyrics')
+                      : (lang === 'sk' ? 'Iba text piesne (Lyrics Only)' : 'Lyrics Only View')}
+                  </span>
+                  {showChords && viewInstrument === 'alto_sax' && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
                       Alt Sax (E♭)
                     </span>
                   )}
                 </span>
                 <span className="text-xs text-slate-400">
-                  {lang === 'sk' ? 'Poznámky a vyhrávky sú umiestnené v paneli vpravo →' : 'Notes & cues are in the right sidebar →'}
+                  {lang === 'sk' ? 'Osobné poznámky sú umiestnené v paneli vpravo →' : 'Personal notes are in the right sidebar →'}
                 </span>
               </div>
 
               {/* ChordPro Render */}
-              <div className="chordpro-render font-sans text-slate-100 leading-loose space-y-3">
+              <div
+                className={`chordpro-render font-sans text-slate-100 leading-loose space-y-3 ${
+                  fontSizeDelta === -1
+                    ? 'text-sm'
+                    : fontSizeDelta === 1
+                    ? 'text-lg'
+                    : fontSizeDelta === 2
+                    ? 'text-xl'
+                    : 'text-base'
+                }`}
+              >
                 {parsed.lines.map((line) => {
                   if (line.type === 'empty') {
                     return <div key={line.id} className="h-4" />;
@@ -563,13 +760,15 @@ export const SongDetail: React.FC<SongDetailProps> = ({
                     >
                       {line.segments?.map((seg, idx) => (
                         <div key={idx} className="inline-flex flex-col items-start align-bottom leading-tight">
-                          {seg.chord ? (
-                            <span className="font-mono font-bold text-amber-300 text-sm md:text-base tracking-wide h-6 select-all">
-                              {seg.chord}
-                            </span>
-                          ) : (
-                            <span className="h-6" />
-                          )}
+                          {showChords ? (
+                            seg.chord ? (
+                              <span className="font-mono font-bold text-amber-300 text-sm md:text-base tracking-wide h-6 select-all">
+                                {seg.chord}
+                              </span>
+                            ) : (
+                              <span className="h-6" />
+                            )
+                          ) : null}
                           <span className="font-sans text-base md:text-lg text-slate-100 whitespace-pre">
                             {seg.text || ' '}
                           </span>
@@ -581,10 +780,10 @@ export const SongDetail: React.FC<SongDetailProps> = ({
               </div>
 
               {/* Unique chords pill bar */}
-              {parsed.allUniqueChords.length > 0 && (
+              {showChords && parsed.allUniqueChords.length > 0 && (
                 <div className="pt-6 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
                   <span className="text-xs text-slate-400 font-medium">
-                    {lang === 'sk' ? 'Akordy:' : 'Chords:'}
+                    {lang === 'sk' ? 'Akordy v piesni:' : 'Chords:'}
                   </span>
                   {parsed.allUniqueChords.map((chord) => (
                     <span
@@ -602,7 +801,15 @@ export const SongDetail: React.FC<SongDetailProps> = ({
 
         {/* Right Column (Lg: 5 cols): NOTES & SAX & AUDIO SIDEBAR (Side-by-side) */}
         <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-20">
-          {/* 1. Performance Notes & Stage Cues - DIRECTLY NEXT TO THE TEXT */}
+          {/* 1. Personal Annotations - PERSONAL NOTES FOR THIS SONG */}
+          <PersonalAnnotationsSection
+            annotations={song.personalAnnotations || []}
+            onUpdateAnnotations={(updated) => {
+              onSaveSong({ ...song, personalAnnotations: updated });
+            }}
+          />
+
+          {/* 2. Performance Notes & Stage Cues */}
           <PerformanceNotesSection
             notes={song.performanceNotes || []}
             onUpdateNotes={(updatedNotes) => {
@@ -610,7 +817,7 @@ export const SongDetail: React.FC<SongDetailProps> = ({
             }}
           />
 
-          {/* 2. Alto Saxophone (E♭) Solos & Scale Guide */}
+          {/* 3. Alto Saxophone (E♭) Solos & Scale Guide */}
           <SaxSoloSection
             solos={song.saxSolos || []}
             songKey={effectiveKey}
@@ -619,7 +826,7 @@ export const SongDetail: React.FC<SongDetailProps> = ({
             }}
           />
 
-          {/* 3. Audio Takes & Rehearsal Recorder with MEGA cloud integration */}
+          {/* 4. Audio Takes & Rehearsal Recorder with MEGA cloud integration */}
           <AudioSection
             songId={song.id}
             audioRecords={song.audioRecords || []}
@@ -629,6 +836,105 @@ export const SongDetail: React.FC<SongDetailProps> = ({
           />
         </div>
       </div>
+
+      {/* PDF Export Selection Modal */}
+      {showPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl text-slate-100 space-y-5 animate-in fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <FileDown className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold text-white">
+                  {lang === 'sk' ? 'PDF Export skladby' : 'Export Song to PDF'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowPdfModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Choose Mode */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-300">
+                {lang === 'sk' ? 'Vyberte obsah PDF exportu:' : 'Select PDF content:'}
+              </label>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPdfExportMode('both')}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                    pdfExportMode === 'both'
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-bold'
+                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="text-sm font-bold flex items-center gap-2">
+                      <span>🎵 Kompletný notový list (Akordy + Text)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Obsahuje akordy nad textom (Alt Sax E♭), poodiové poznámky a sólo.
+                    </p>
+                  </div>
+                  {pdfExportMode === 'both' && <CheckCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPdfExportMode('lyrics_only')}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                    pdfExportMode === 'lyrics_only'
+                      ? 'bg-sky-500/15 border-sky-500 text-sky-300 font-bold'
+                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <div>
+                    <div className="text-sm font-bold flex items-center gap-2">
+                      <span>📄 Iba text piesne (Lyrics Only)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Čistý text bez akordov, ideálny pre speváka alebo čítanie textu na pódiu.
+                    </p>
+                  </div>
+                  {pdfExportMode === 'lyrics_only' && <CheckCircle className="w-4 h-4 text-sky-400 flex-shrink-0" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons: Download PDF or Save to MEGA */}
+            <div className="space-y-2 pt-3 border-t border-slate-800">
+              <button
+                onClick={() => executeDownloadPdf(pdfExportMode)}
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer shadow-lg"
+              >
+                <FileDown className="w-4 h-4" />
+                <span>
+                  {pdfExportMode === 'lyrics_only'
+                    ? 'Stiahnuť PDF (Iba text)'
+                    : 'Stiahnuť PDF (Akordy + Text pre Alt Sax)'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => executeSaveToMegaCloud(pdfExportMode)}
+                disabled={isUploadingToMega}
+                className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer shadow-lg disabled:opacity-50"
+              >
+                <CloudUpload className="w-4 h-4" />
+                <span>
+                  {isUploadingToMega
+                    ? 'Ukladám do MEGA...'
+                    : 'Uložiť toto PDF a audio do MEGA Cloudu'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

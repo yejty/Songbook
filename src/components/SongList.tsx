@@ -14,6 +14,11 @@ import {
   FolderOpen,
   Volume2,
   FileUp,
+  User,
+  ArrowUpDown,
+  BookOpen,
+  FolderArchive,
+  Cloud,
 } from 'lucide-react';
 
 interface SongListProps {
@@ -24,6 +29,7 @@ interface SongListProps {
   onEnterStageMode: (song: Song, semitones: number, instrument: InstrumentType) => void;
   onAddNewSong: (newSong: Song) => void;
   onOpenImportModal: () => void;
+  onOpenMegaFolderImport?: () => void;
 }
 
 export const SongList: React.FC<SongListProps> = ({
@@ -34,16 +40,22 @@ export const SongList: React.FC<SongListProps> = ({
   onEnterStageMode,
   onAddNewSong,
   onOpenImportModal,
+  onOpenMegaFolderImport,
 }) => {
   const { lang, t } = useI18n();
+
+  // Library filter: 'all' | 'my_songs' | 'favorites'
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'my_songs' | 'favorites'>('all');
   const [selectedTag, setSelectedTag] = useState<string>('all');
-  const [onlyFavorites, setOnlyFavorites] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<'title' | 'artist' | 'recent' | 'key'>('title');
+
   const [showNewSongModal, setShowNewSongModal] = useState<boolean>(false);
 
   // New song form states
   const [newTitle, setNewTitle] = useState('');
   const [newArtist, setNewArtist] = useState('');
   const [newKey, setNewKey] = useState('C');
+  const [newIsMySong, setNewIsMySong] = useState(true);
 
   // Collect all unique tags across songs
   const allTags = useMemo(() => {
@@ -52,12 +64,16 @@ export const SongList: React.FC<SongListProps> = ({
     return Array.from(set);
   }, [songs]);
 
-  // Filtered songs
+  const mySongsCount = useMemo(() => songs.filter((s) => s.isMySong).length, [songs]);
+  const favoritesCount = useMemo(() => songs.filter((s) => s.isFavorite).length, [songs]);
+
+  // Filtered & Sorted songs
   const filteredSongs = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
 
-    return songs.filter((song) => {
-      if (onlyFavorites && !song.isFavorite) return false;
+    let result = songs.filter((song) => {
+      if (libraryFilter === 'my_songs' && !song.isMySong) return false;
+      if (libraryFilter === 'favorites' && !song.isFavorite) return false;
       if (selectedTag !== 'all' && !song.tags?.includes(selectedTag)) return false;
 
       if (!query) return true;
@@ -70,7 +86,18 @@ export const SongList: React.FC<SongListProps> = ({
 
       return titleMatch || artistMatch || keyMatch || tagMatch || lyricsMatch;
     });
-  }, [songs, searchQuery, onlyFavorites, selectedTag]);
+
+    // Sorting
+    result.sort((a, b) => {
+      if (sortBy === 'title') return a.title.localeCompare(b.title);
+      if (sortBy === 'artist') return a.artist.localeCompare(b.artist);
+      if (sortBy === 'key') return (a.currentKey || '').localeCompare(b.currentKey || '');
+      if (sortBy === 'recent') return (b.lastModified || 0) - (a.lastModified || 0);
+      return 0;
+    });
+
+    return result;
+  }, [songs, searchQuery, libraryFilter, selectedTag, sortBy]);
 
   const handleCreateNewSong = () => {
     if (!newTitle.trim()) return;
@@ -80,14 +107,15 @@ export const SongList: React.FC<SongListProps> = ({
     const created: Song = {
       id: `song-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       title: newTitle.trim(),
-      artist: newArtist.trim() || (lang === 'sk' ? 'Neznámy interpret' : 'Unknown Artist'),
+      artist: newArtist.trim() || (lang === 'sk' ? 'Moja tvorba' : 'My Composition'),
       originalKey: newKey,
       currentKey: newKey,
       tempo: 120,
       timeSignature: '4/4',
-      tags: ['Alt Saxofón'],
+      tags: ['Alt Saxofón', newIsMySong ? 'Moja tvorba' : 'Cover'],
       chordProText: initialChordPro,
       performanceNotes: [],
+      personalAnnotations: [],
       saxSolos: [
         {
           id: `sax-${Date.now()}`,
@@ -99,6 +127,7 @@ export const SongList: React.FC<SongListProps> = ({
       ],
       audioRecords: [],
       isFavorite: false,
+      isMySong: newIsMySong,
       lastModified: Date.now(),
     };
 
@@ -136,23 +165,22 @@ export const SongList: React.FC<SongListProps> = ({
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Favorites Toggle */}
-            <button
-              onClick={() => setOnlyFavorites(!onlyFavorites)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                onlyFavorites
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow'
-                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Star className={`w-3.5 h-3.5 ${onlyFavorites ? 'fill-amber-400 text-amber-400' : ''}`} />
-              <span>{t.favorites}</span>
-            </button>
+            {/* MEGA Initial Folder Import Button */}
+            {onOpenMegaFolderImport && (
+              <button
+                onClick={onOpenMegaFolderImport}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer"
+                title={lang === 'sk' ? 'Prvotný import priečinkov s nôtami, audio a fotkami z MEGA' : 'Initial bulk import of song folders from MEGA'}
+              >
+                <FolderArchive className="w-4 h-4" />
+                <span>{lang === 'sk' ? 'Prvotný import z MEGA' : 'Import from MEGA'}</span>
+              </button>
+            )}
 
             {/* IMPORT SONG BUTTON */}
             <button
               onClick={onOpenImportModal}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer"
               title={lang === 'sk' ? 'Importovať text a automaticky konvertovať do ChordPro' : 'Import text and auto-convert to ChordPro'}
             >
               <FileUp className="w-4 h-4" />
@@ -162,7 +190,7 @@ export const SongList: React.FC<SongListProps> = ({
             {/* Add New Song Button */}
             <button
               onClick={() => setShowNewSongModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs border border-slate-700 transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs border border-slate-700 transition active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4 text-amber-400" />
               <span>{t.newSong}</span>
@@ -170,26 +198,96 @@ export const SongList: React.FC<SongListProps> = ({
           </div>
         </div>
 
+        {/* Library Tabs (Všetky skladby / Moje piesne / Obľúbené) & Sort Dropdown */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+          <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
+            {/* All songs */}
+            <button
+              onClick={() => setLibraryFilter('all')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap ${
+                libraryFilter === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>{t.allSongs}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${libraryFilter === 'all' ? 'bg-slate-950 text-white' : 'bg-slate-800'}`}>
+                {songs.length}
+              </span>
+            </button>
+
+            {/* My Songs specifically */}
+            <button
+              onClick={() => setLibraryFilter('my_songs')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap ${
+                libraryFilter === 'my_songs'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md font-bold'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+              }`}
+            >
+              <User className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{lang === 'sk' ? 'Moje piesne (Moja tvorba)' : 'My Songs (Originals)'}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${libraryFilter === 'my_songs' ? 'bg-slate-950 text-white' : 'bg-slate-800'}`}>
+                {mySongsCount}
+              </span>
+            </button>
+
+            {/* Favorites */}
+            <button
+              onClick={() => setLibraryFilter('favorites')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition cursor-pointer whitespace-nowrap ${
+                libraryFilter === 'favorites'
+                  ? 'bg-amber-400 text-slate-950 shadow-md'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5 fill-current" />
+              <span>{t.favorites}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${libraryFilter === 'favorites' ? 'bg-slate-950 text-white' : 'bg-slate-800'}`}>
+                {favoritesCount}
+              </span>
+            </button>
+          </div>
+
+          {/* Sort By Dropdown */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <ArrowUpDown className="w-3.5 h-3.5 text-amber-400" />
+            <span>Zoradiť:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
+            >
+              <option value="title">Podľa názvu (A-Z)</option>
+              <option value="artist">Podľa interpreta</option>
+              <option value="key">Podľa tóniny</option>
+              <option value="recent">Najnovšie upravené</option>
+            </select>
+          </div>
+        </div>
+
         {/* Tag Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+          <span className="text-[11px] text-slate-500 mr-1 self-center">Žánre:</span>
           <button
             onClick={() => setSelectedTag('all')}
-            className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
               selectedTag === 'all'
-                ? 'bg-amber-500 text-slate-950 font-bold'
+                ? 'bg-slate-700 text-white font-bold'
                 : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
             }`}
           >
-            {t.allSongs} ({songs.length})
+            Všetky
           </button>
 
           {allTags.map((tag) => (
             <button
               key={tag}
               onClick={() => setSelectedTag(tag === selectedTag ? 'all' : tag)}
-              className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer whitespace-nowrap ${
                 selectedTag === tag
-                  ? 'bg-amber-500 text-slate-950 font-bold'
+                  ? 'bg-slate-700 text-white font-bold'
                   : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
               }`}
             >
@@ -208,8 +306,8 @@ export const SongList: React.FC<SongListProps> = ({
             <button
               onClick={() => {
                 onSearchChange('');
+                setLibraryFilter('all');
                 setSelectedTag('all');
-                setOnlyFavorites(false);
               }}
               className="text-xs text-amber-400 underline font-semibold cursor-pointer"
             >
@@ -228,6 +326,7 @@ export const SongList: React.FC<SongListProps> = ({
           {filteredSongs.map((song) => {
             const hasSax = song.saxSolos && song.saxSolos.length > 0;
             const hasAudio = song.audioRecords && song.audioRecords.length > 0;
+            const hasPersonalNotes = song.personalAnnotations && song.personalAnnotations.length > 0;
 
             return (
               <div
@@ -240,9 +339,16 @@ export const SongList: React.FC<SongListProps> = ({
                       onClick={() => onSelectSong(song.id)}
                       className="cursor-pointer flex-1"
                     >
-                      <h3 className="font-extrabold text-base text-slate-100 group-hover:text-amber-400 transition leading-snug">
-                        {song.title}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-extrabold text-base text-slate-100 group-hover:text-amber-400 transition leading-snug">
+                          {song.title}
+                        </h3>
+                        {song.isMySong && (
+                          <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                            Moja
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-400 mt-0.5 font-medium">
                         {song.artist}
                       </p>
@@ -254,7 +360,7 @@ export const SongList: React.FC<SongListProps> = ({
                     </span>
                   </div>
 
-                  {/* Badges: BPM, Sax, Audio, Tags */}
+                  {/* Badges: BPM, Sax, Audio, Tags, Personal Notes */}
                   <div className="flex flex-wrap items-center gap-1.5 mt-3 text-[11px]">
                     {song.tempo && (
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-slate-300 font-mono">
@@ -276,6 +382,12 @@ export const SongList: React.FC<SongListProps> = ({
                       </span>
                     )}
 
+                    {hasPersonalNotes && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/30 text-sky-300 font-medium">
+                        📝 {song.personalAnnotations!.length} poznámok
+                      </span>
+                    )}
+
                     {song.capo ? (
                       <span className="px-2 py-0.5 rounded-md bg-slate-950 border border-slate-800 text-slate-400">
                         Capo {song.capo}
@@ -290,7 +402,7 @@ export const SongList: React.FC<SongListProps> = ({
                     onClick={() => onSelectSong(song.id)}
                     className="text-xs text-slate-300 hover:text-white font-semibold flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{lang === 'sk' ? 'Otvoriť noty a poznámky' : 'Open Sheet & Notes'}</span>
+                    <span>{lang === 'sk' ? 'Otvoriť noty a akordy' : 'Open Sheet & Chords'}</span>
                     <span>→</span>
                   </button>
 
@@ -325,7 +437,7 @@ export const SongList: React.FC<SongListProps> = ({
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="napr. Careless Whisper / Moja Skladba"
+                  placeholder="napr. Moja nová pieseň"
                   className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-white text-sm focus:border-amber-500 focus:outline-none"
                 />
               </div>
@@ -336,7 +448,7 @@ export const SongList: React.FC<SongListProps> = ({
                   type="text"
                   value={newArtist}
                   onChange={(e) => setNewArtist(e.target.value)}
-                  placeholder="napr. George Michael / Kapela"
+                  placeholder="napr. Moje Meno / Kapela"
                   className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-white focus:border-amber-500 focus:outline-none"
                 />
               </div>
@@ -351,12 +463,26 @@ export const SongList: React.FC<SongListProps> = ({
                   className="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-amber-400 font-mono font-bold focus:border-amber-500 focus:outline-none"
                 />
               </div>
+
+              <div className="pt-1">
+                <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newIsMySong}
+                    onChange={(e) => setNewIsMySong(e.target.checked)}
+                    className="rounded accent-emerald-500 cursor-pointer"
+                  />
+                  <span className="font-semibold text-emerald-400">
+                    Označiť ako moju pieseň (Moja tvorba)
+                  </span>
+                </label>
+              </div>
             </div>
 
             <p className="text-[11px] text-slate-400 italic">
               {lang === 'sk'
-                ? 'Automaticky vytvoríme ChordPro šablónu s vyhrávkou a akordmi, ktorú môžete kedykoľvek upraviť.'
-                : 'We will auto-generate a ChordPro template with saxophone cues and chords.'}
+                ? 'Automaticky vytvoríme ChordPro šablónu s vyhrávkou pre Alt Saxofón a akordmi.'
+                : 'We will auto-generate a ChordPro template with Alto Sax cues and chords.'}
             </p>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">

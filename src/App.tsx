@@ -16,6 +16,7 @@ import { SongDetail } from './components/SongDetail';
 import { SetlistManager } from './components/SetlistManager';
 import { StageMode } from './components/StageMode';
 import { MegaSyncModal } from './components/MegaSyncModal';
+import { MegaFolderImportModal } from './components/MegaFolderImportModal';
 import { ImportSongModal } from './components/ImportSongModal';
 import { ChordProHelpModal } from './components/ChordProHelpModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -36,6 +37,7 @@ function AppContent() {
 
   // Modals
   const [isMegaSyncOpen, setIsMegaSyncOpen] = useState<boolean>(false);
+  const [isMegaFolderImportOpen, setIsMegaFolderImportOpen] = useState<boolean>(false);
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
@@ -201,6 +203,7 @@ function AppContent() {
             onEnterStageMode={handleEnterStageModeForSingleSong}
             onAddNewSong={handleAddNewSong}
             onOpenImportModal={() => setIsImportModalOpen(true)}
+            onOpenMegaFolderImport={() => setIsMegaFolderImportOpen(true)}
           />
         ) : (
           /* Setlists & Playlists Manager */
@@ -222,10 +225,17 @@ function AppContent() {
         onImportSong={handleAddNewSong}
       />
 
+      <MegaFolderImportModal
+        isOpen={isMegaFolderImportOpen}
+        onClose={() => setIsMegaFolderImportOpen(false)}
+        onImportComplete={refreshData}
+      />
+
       <MegaSyncModal
         isOpen={isMegaSyncOpen}
         onClose={() => setIsMegaSyncOpen(false)}
         onSyncComplete={refreshData}
+        onOpenFolderImport={() => setIsMegaFolderImportOpen(true)}
       />
 
       <ChordProHelpModal

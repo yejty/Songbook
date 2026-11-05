@@ -21,18 +21,21 @@ import {
   HardDrive,
   ShieldCheck,
   FolderSync,
+  FolderArchive,
 } from 'lucide-react';
 
 interface MegaSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSyncComplete: () => void;
+  onOpenFolderImport?: () => void;
 }
 
 export const MegaSyncModal: React.FC<MegaSyncModalProps> = ({
   isOpen,
   onClose,
   onSyncComplete,
+  onOpenFolderImport,
 }) => {
   const { lang, t } = useI18n();
   const [config, setConfig] = useState<MegaSyncConfig>({
@@ -173,6 +176,40 @@ export const MegaSyncModal: React.FC<MegaSyncModalProps> = ({
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
             )}
             <span>{statusMessage.text}</span>
+          </div>
+        )}
+
+        {/* Highlighted Initial Folder Import Banner */}
+        {onOpenFolderImport && (
+          <div className="p-4 rounded-xl bg-gradient-to-r from-red-950/60 via-slate-900 to-amber-950/40 border border-red-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 flex-shrink-0">
+                <FolderArchive className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs text-white flex items-center gap-2">
+                  <span>{lang === 'sk' ? 'Prvotný import priečinkov z MEGA' : 'Initial Folder Import from MEGA'}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                    ODPORÚČANÉ
+                  </span>
+                </h4>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  {lang === 'sk'
+                    ? 'Máte na MEGA cloude priečinky s nahrávkami (.mp3), PDF notami, skenmi akordov a textami? Spustite hromadný import!'
+                    : 'Have song folders on MEGA with recordings (.mp3), PDF sheets, scanned chords, and lyrics? Run bulk import!'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                onClose();
+                onOpenFolderImport();
+              }}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-amber-500 hover:brightness-110 text-white font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+            >
+              <span>{lang === 'sk' ? 'Otvoriť import priečinkov →' : 'Open Folder Importer →'}</span>
+            </button>
           </div>
         )}
 

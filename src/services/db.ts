@@ -208,8 +208,13 @@ But [C]you're crying, [G]you're crying [A]now
     timeSignature: '4/4',
     duration: 310,
     isFavorite: true,
-    tags: ['Slovak Hit', 'Rock Ballad', 'Crowd Favorite', 'Emotional'],
+    tags: ['Slovak Hit', 'Rock Ballad', 'Crowd Favorite', 'Moja tvorba'],
+    isMySong: true,
     lastModified: Date.now() - 1000 * 3600 * 48,
+    personalAnnotations: [
+      { id: 'pa-1', category: 'vocal', text: 'V druhej slohe jemnejší tichý spev, v refréne naplno!', color: 'amber', createdAt: Date.now() },
+      { id: 'pa-2', category: 'sax', text: 'Altový saxofón (E dur) - vyhrávky s vibratom po slove "slobodou"', color: 'emerald', createdAt: Date.now() }
+    ],
     performanceNotes: [
       { id: 'pn-v-1', tag: 'intro', text: 'Jemný klavírny úvod, saxofón nastupuje jemnými vyhrávkami.' },
       { id: 'pn-v-2', tag: 'solo', text: 'Po druhom refréne plné saxofónové sólo s gradáciou do výšok.' },
